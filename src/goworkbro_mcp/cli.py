@@ -116,8 +116,9 @@ async def run(args) -> None:
 
         if args.cmd == "today":
             data = core.check(await link.request("today.summary"))
-            print(json.dumps(data, ensure_ascii=False, indent=1) if args.json else "")
-            if not args.json:
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=1))
+            else:
                 print_summary(data)
             return
 
@@ -136,15 +137,17 @@ async def run(args) -> None:
                       f"记下 {data['minutes']} min · 归到 {data['day']}")
             else:
                 data = core.check(await link.request("sleep.list", {"days": args.days}))
-                print(json.dumps(data, ensure_ascii=False, indent=1) if args.json else "", end="")
-                if not args.json:
+                if args.json:
+                    print(json.dumps(data, ensure_ascii=False, indent=1))
+                else:
                     print_sleep(data)
             return
 
         if args.cmd == "focus":
             data = core.check(await link.request("focus.today"))
-            print(json.dumps(data, ensure_ascii=False, indent=1) if args.json else "", end="")
-            if not args.json:
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=1))
+            else:
                 print_focus(data)
             return
 
