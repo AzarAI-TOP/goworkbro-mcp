@@ -48,16 +48,6 @@ async def _call(op: str, data: dict | None = None) -> dict:
         raise ToolError("手机没回话：协同开着吗？蓝牙够近吗？") from error
 
 
-async def _call_id(kind: str, op: str, prefix: str, data: dict | None = None) -> dict:
-    """Resolve the id and run the op in one locked turn (no half-done pair)."""
-    try:
-        return await _phone.call_id(op, kind, prefix, data)
-    except core.GwbError as error:
-        raise ToolError(f"{error.code}: {error.message}") from error
-    except asyncio.TimeoutError as error:
-        raise ToolError("手机没回话：协同开着吗？蓝牙够近吗？") from error
-
-
 # Protocol v2 ops (water / sleep / focus / summary). Asking first turns a
 # confusing "bad_op" into "upgrade the app", which is what the user must do.
 V2 = 2
@@ -71,6 +61,17 @@ async def _call_v2(op: str, data: dict | None = None) -> dict:
     except asyncio.TimeoutError as error:
         raise ToolError("手机没回话：协同开着吗？蓝牙够近吗？") from error
     return await _call(op, data)
+
+
+async def _call_id(kind: str, op: str, prefix: str, data: dict | None = None) -> dict:
+    """Resolve the id and run the op in one locked turn (no half-done pair)."""
+    try:
+        return await _phone.call_id(op, kind, prefix, data)
+    except core.GwbError as error:
+        raise ToolError(f"{error.code}: {error.message}") from error
+    except asyncio.TimeoutError as error:
+        raise ToolError("手机没回话：协同开着吗？蓝牙够近吗？") from error
+
 
 
 
@@ -87,8 +88,11 @@ async def list_todos(only: str | None = None) -> dict:
     only: all（默认，含全部完成历史）/ open（只看未完成）/ today（未完成 + 今天完成的，
     就是手机待办页上肉眼可见的那些）。历史会一直长，只想找活的时候用 open。
     """
-    data = {"only": only} if only is not None else None
-    return {"items": (await _call("todos.list", data)).get("items", [])}
+    # `only` itself is a v2 field: a v1 phone would ignore it and answer with
+    # everything, which looks like a successful filter that never happened.
+    if only is None:
+        return {"items": (await _call("todos.list")).get("items", [])}
+    return {"items": (await _call_v2("todos.list", {"only": only})).get("items", [])}
 
 
 @server.tool()
