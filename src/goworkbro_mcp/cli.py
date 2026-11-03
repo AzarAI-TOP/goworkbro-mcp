@@ -47,6 +47,48 @@ def print_countdowns(items: list) -> None:
         print(f"{short(item['id'])}  {item['target_at']}  {item['title']}")
 
 
+def print_summary(data: dict) -> None:
+    todos = data.get("todos", {})
+    habits = data.get("habits", {})
+    water = data.get("water", {})
+    sleep = data.get("sleep", {})
+    focus = data.get("focus", {})
+    last = sleep.get("last")
+    print(f"今天 {data.get('today')}")
+    print(f"  待办   未完成 {todos.get('undone')} · 今日完成 {todos.get('done_today')} / 共 {todos.get('total')}")
+    print(f"  习惯   达标 {habits.get('done')} / {habits.get('total')}")
+    print(f"  喝水   {water.get('ml')} / {water.get('goal_ml')} ml")
+    night = f"{sleep.get('today_minutes')} min" if sleep.get("today_minutes") else "还没记"
+    streak = sleep.get("streak") or 0
+    print(f"  睡眠   {night} · 连续达标 {streak} 天")
+    if last:
+        print(f"         最近一次 {last.get('sleep_at')} → {last.get('wake_at')}（{last.get('minutes')} min）")
+    print(f"  专注   {focus.get('sessions')} 轮 / {focus.get('minutes')} min")
+    nxt = data.get("next_countdown")
+    if nxt:
+        print(f"  倒计时 {nxt.get('target_at')}  {nxt.get('title')}")
+
+
+def print_water(data: dict) -> None:
+    print(f"{data.get('date')}  {data.get('ml')} / {data.get('goal_ml')} ml")
+    for log in data.get("logs", []):
+        print(f"  {log.get('logged_at')}  {log.get('ml')} ml  {short(log.get('id', ''))}")
+
+
+def print_sleep(data: dict) -> None:
+    print(f"今天 {data.get('today_minutes')} min · 窗口起点 {data.get('from')}")
+    for item in data.get("items", []):
+        print(f"  {short(item['id'])}  {item['sleep_at']} → {item['wake_at']}"
+              f"  {item['minutes']} min  ({item['day']})")
+
+
+def print_focus(data: dict) -> None:
+    print(f"{data.get('date')}  {data.get('sessions')} 轮 / {data.get('minutes')} min")
+    for row in data.get("by_todo", []):
+        title = row.get("title") or short(row.get("todo_id", ""))
+        print(f"  {row.get('minutes')} min  {title}")
+
+
 PRINTERS = {"todos": print_todos, "habits": print_habits, "countdowns": print_countdowns}
 
 
@@ -70,6 +112,40 @@ async def run(args) -> None:
                 print("（空）")
             else:
                 PRINTERS[args.cmd](items)
+            return
+
+        if args.cmd == "today":
+            data = core.check(await link.request("today.summary"))
+            print(json.dumps(data, ensure_ascii=False, indent=1) if args.json else "")
+            if not args.json:
+                print_summary(data)
+            return
+
+        if args.cmd == "water":
+            data = core.check(await link.request("water.log", {"id": core.new_id(), "ml": args.ml}))
+            print(json.dumps(data, ensure_ascii=False) if args.json else
+                  f"记下 {data['ml']} ml · 今天 {data['today_ml']} / {data['goal_ml']} ml")
+            return
+
+        if args.cmd == "sleep":
+            if args.action == "log":
+                data = core.check(await link.request("sleep.log", {
+                    "id": core.new_id(), "sleep_at": args.start, "wake_at": args.end,
+                }))
+                print(json.dumps(data, ensure_ascii=False) if args.json else
+                      f"记下 {data['minutes']} min · 归到 {data['day']}")
+            else:
+                data = core.check(await link.request("sleep.list", {"days": args.days}))
+                print(json.dumps(data, ensure_ascii=False, indent=1) if args.json else "", end="")
+                if not args.json:
+                    print_sleep(data)
+            return
+
+        if args.cmd == "focus":
+            data = core.check(await link.request("focus.today"))
+            print(json.dumps(data, ensure_ascii=False, indent=1) if args.json else "", end="")
+            if not args.json:
+                print_focus(data)
             return
 
         if args.cmd == "todo":
@@ -96,6 +172,18 @@ async def todo(link: core.Link, args) -> None:
             await link.request("todo.done", {"id": todo_id, "done": not args.undone}),
         )
         print(f"{short(data['id'])} → {('已完成 ' + data['done_date']) if data['is_done'] else '未完成'}")
+    elif args.action == "edit":
+        data = {}
+        for key, field in (("title", "title"), ("icon", "icon"), ("color", "color_index"),
+                           ("timing", "timing_type"), ("minutes", "duration_minutes")):
+            value = getattr(args, key)
+            if value is not None:
+                data[field] = value
+        if not data:
+            sys.exit("没给要改的字段：--title / --icon / --color / --timing / --minutes")
+        todo_id = await core.resolve_id(link, "todos", args.id)
+        core.check(await link.request("todo.update", {"id": todo_id, **data}))
+        print(f"已修改 {short(todo_id)}")
     elif args.action == "rm":
         if not args.yes:
             sys.exit(f"删除待办不可恢复：确认就加 --yes（id {args.id}）")
@@ -122,6 +210,18 @@ async def habit(link: core.Link, args) -> None:
         result = core.check(await link.request("habit.check", data))
         state = "已达标" if result["is_completed"] else "未达标"
         print(f"{short(result['id'])}  {result['current_count']}/{result['target_count']}  {state}")
+    elif args.action == "edit":
+        data = {}
+        for key, field in (("title", "title"), ("icon", "icon"), ("color", "color_index"),
+                           ("target", "target_count"), ("unit", "unit")):
+            value = getattr(args, key)
+            if value is not None:
+                data[field] = value
+        if not data:
+            sys.exit("没给要改的字段：--title / --icon / --color / --target / --unit")
+        habit_id = await core.resolve_id(link, "habits", args.id)
+        core.check(await link.request("habit.update", {"id": habit_id, **data}))
+        print(f"已修改 {short(habit_id)}")
     elif args.action == "rm":
         if not args.yes:
             sys.exit(f"删除习惯不可恢复：确认就加 --yes（id {args.id}）")
@@ -137,6 +237,19 @@ async def countdown(link: core.Link, args) -> None:
             data["color_index"] = args.color
         created = core.check(await link.request("countdown.add", data))
         print(f"新建 {short(created['id'])}  {args.title} @ {args.when}")
+    elif args.action == "edit":
+        data = {}
+        if args.title is not None:
+            data["title"] = args.title
+        if args.when is not None:
+            data["target_at"] = args.when
+        if args.color is not None:
+            data["color_index"] = args.color
+        if not data:
+            sys.exit("没给要改的字段：--title / --when / --color")
+        countdown_id = await core.resolve_id(link, "countdowns", args.id)
+        core.check(await link.request("countdown.update", {"id": countdown_id, **data}))
+        print(f"已修改 {short(countdown_id)}")
     elif args.action == "rm":
         if not args.yes:
             sys.exit(f"删除倒计时不可恢复：确认就加 --yes（id {args.id}）")
@@ -154,6 +267,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("ping", help="连通性 + 各表条数")
+    sub.add_parser("today", help="今天的一帧全景（待办/习惯/喝水/睡眠/专注/下一个倒计时）")
+    water = sub.add_parser("water", help="记一杯水（默认第一档快捷杯量）")
+    water.add_argument("--ml", type=int)
+    sleep = sub.add_parser("sleep", help="睡眠记录：默认列出，log 补一条")
+    sleep.add_argument("--days", type=int, default=14)
+    sleep_sub = sleep.add_subparsers(dest="action")
+    slog = sleep_sub.add_parser("log", help="补一条：本地时间，如 2026-11-04T23:00")
+    slog.add_argument("start")
+    slog.add_argument("end")
+    sub.add_parser("focus", help="今天的专注统计")
     for name in core.LIST_OPS:
         sub.add_parser(name, help=f"列出 {name}")
 
@@ -165,6 +288,13 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--color", type=int)
     add.add_argument("--timing", choices=["none", "forward", "countdown"])
     add.add_argument("--minutes", type=int)
+    edit = todo_sub.add_parser("edit", help="改标题/图标/颜色/计时（不传的字段不动）")
+    edit.add_argument("id")
+    edit.add_argument("--title")
+    edit.add_argument("--icon")
+    edit.add_argument("--color", type=int)
+    edit.add_argument("--timing", choices=["none", "forward", "countdown"])
+    edit.add_argument("--minutes", type=int)
     done = todo_sub.add_parser("done", help="标记完成 / --undone 改回未完成")
     done.add_argument("id", help="id 或它的前缀")
     done.add_argument("--undone", action="store_true")
@@ -180,6 +310,13 @@ def build_parser() -> argparse.ArgumentParser:
     hadd.add_argument("--unit")
     hadd.add_argument("--icon")
     hadd.add_argument("--color", type=int)
+    hedit = habit_sub.add_parser("edit", help="改标题/目标/单位/图标/颜色")
+    hedit.add_argument("id")
+    hedit.add_argument("--title")
+    hedit.add_argument("--target", type=int)
+    hedit.add_argument("--unit")
+    hedit.add_argument("--icon")
+    hedit.add_argument("--color", type=int)
     check_cmd = habit_sub.add_parser("check", help="打卡；--delta -1 撤销一下")
     check_cmd.add_argument("id")
     check_cmd.add_argument("--delta", type=int)
@@ -193,6 +330,11 @@ def build_parser() -> argparse.ArgumentParser:
     cadd.add_argument("title")
     cadd.add_argument("when")
     cadd.add_argument("--color", type=int)
+    cedit = cd_sub.add_parser("edit", help="改标题/到期时间/颜色")
+    cedit.add_argument("id")
+    cedit.add_argument("--title")
+    cedit.add_argument("--when")
+    cedit.add_argument("--color", type=int)
     crm = cd_sub.add_parser("rm", help="删除（要 --yes）")
     crm.add_argument("id")
     crm.add_argument("-y", "--yes", action="store_true")

@@ -3,6 +3,27 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-11-03
+
+跟着手机端协议 v2 走：多了「今天全景」和喝水/睡眠/专注，并且终于能改已有条目。
+
+### Added
+
+- **6 个新工具**：`today_summary`（一帧给出待办/习惯/喝水/睡眠/专注/下一个倒计时）、
+  `log_water`、`water_today`、`list_sleep`、`log_sleep`、`focus_today`。都依赖手机端
+  GoWorkBro 3.8+（协议 v2）：客户端先用 `ping.protocol` 判断，旧版 app 上报
+  `too_old` 并说明怎么升，而不是抛一个看不懂的 `bad_op`。
+- **3 个 update 工具**：`update_todo` / `update_habit` / `update_countdown`。以前只能
+  「删了重建」——那会丢掉完成日期和习惯计数。只改传了的字段。
+- `add_*` 全部接受可选 `id`：传了就是 upsert，重试不会造出第二条。
+- `list_todos(only=open|today)`：完成历史会一直长，只找活的时候不必拉全量。
+- CLI 对等功能：`gwb today` / `water` / `sleep [log]` / `focus`，以及
+  `todo|habit|cd edit`。
+
+### Changed
+
+- 版本门禁是每**条链路**缓存一次的（`ping` 只问一次，重连才重问）。
+
 ## [0.1.1] - 2026-11-03
 
 真机回归暴露的两个传输层缺陷 + 一轮延迟优化。

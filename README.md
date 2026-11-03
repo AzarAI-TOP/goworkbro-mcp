@@ -41,6 +41,7 @@ gwb todos | habits | countdowns # 列表（--json 给脚本吃）
 
 gwb todo add "写毕设" --icon book --color 2 --timing countdown --minutes 25
 gwb todo done 5c32b591          # id 支持唯一前缀；--undone 改回未完成
+gwb todo edit 5c32b591 --title "写毕设(改)"   # 只改传了的字段
 gwb todo rm 5c32b591 -y         # 不给 -y 就拒绝
 
 gwb habit add "读书" --target 2 --unit 章
@@ -56,16 +57,28 @@ flower sprout file heart bolt basketball coffee cloud cherry fish gamepad bulb g
 
 ## 接进 agent（MCP）
 
-`gwb-mcp` 是标准 stdio MCP 服务器，13 个工具：
+`gwb-mcp` 是标准 stdio MCP 服务器，22 个工具：
 
 | 工具 | 作用 |
 |---|---|
 | `ping` | 链路自检 + 各表条数 |
 | `list_todos` / `list_habits` / `list_countdowns` | 列表（待办与手机待办页同序） |
-| `add_todo` / `set_todo_done` / `delete_todo` | 待办增/改完成/删 |
-| `add_habit` / `check_habit` / `delete_habit` | 习惯增/打卡/删 |
-| `add_countdown` / `delete_countdown` | 倒计时增/删 |
+| `add_todo` / `update_todo` / `set_todo_done` / `delete_todo` | 待办增/改字段/改完成/删 |
+| `add_habit` / `update_habit` / `check_habit` / `delete_habit` | 习惯增/改/打卡/删 |
+| `add_countdown` / `update_countdown` / `delete_countdown` | 倒计时增/改/删 |
+| `today_summary` | 今天全景：待办/习惯/喝水/睡眠/专注/下一个倒计时（一帧） |
+| `log_water` / `water_today` | 记一杯水 / 今日喝水明细 |
+| `list_sleep` / `log_sleep` | 最近睡眠记录（默认 14 天窗口）/ 补一条 |
+| `focus_today` | 今日专注轮次、分钟、按待办分组 |
 | `disconnect` | 主动断开，省手机电（下次调用自动重连） |
+
+`list_todos` 可以传 `only=open`（只看未完成）或 `only=today`（未完成 + 今天完成的），
+完成历史会一直长，只找活的时候别拉全量。`add_*` 都接受可选 `id`：传了就是 upsert，
+同一个 id 重试不会变两条。
+
+`today_summary` / `log_water` / `water_today` / `list_sleep` / `log_sleep` / `focus_today`
+需要手机端 **GoWorkBro 3.8+**（协议 v2）。旧版 app 上调用会得到一条
+`too_old: … 先升级 app`，其余工具照常工作。
 
 注册示例：
 

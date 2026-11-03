@@ -2,7 +2,7 @@
 
 > 与 app 仓库 `docs/remote-protocol.md` 同源；这里只保协议本身，客户端用法见根目录 README。
 
-电脑端（本仓库 `goworkbro_mcp/core.py` + `cli.py` + `server.py`，bleak）之间的约定。协议版本 `RemoteApi.PROTOCOL = 1`。
+电脑端（本仓库 `goworkbro_mcp/core.py` + `cli.py` + `server.py`，bleak）之间的约定。协议版本 `RemoteApi.PROTOCOL = 2`（v2 只新增 op，见下面 op 表；客户端用 `ping.protocol` 判断新能力在不在）。
 
 手机是唯一数据源：每个 op 都是**单次写入**，走的是 UI 用的同一批 DAO，所以 Room 的 Flow 会自动刷新界面，逻辑日规则（`done_date`、习惯跨天清零）与手点完全一致。
 
@@ -70,7 +70,7 @@ Linux 侧两个坑已在 `core/remote/BleServer.kt` 里处理：写响应必须�
 | op | data 入参 | 返回 |
 |---|---|---|
 | `ping` | — | `protocol` `today` `todos` `habits` `countdowns` |
-| `todos.list` | — | `items[]`（与待办页同序：未完成在前，新在上） |
+| `todos.list` | `only?` = `all` / `open` / `today` | `items[]`（与待办页同序：未完成在前，新在上） |
 | `todo.add` | `title` 必填；`id?` `icon?` `color_index?` `timing_type?` `duration_minutes?` | `id` `created` |
 | `todo.update` | `id` 必填；其余同上（不传的字段不动） | `id` `created` |
 | `todo.done` | `id` 必填；`done?`（默认 true） | `id` `is_done` `done_date` |
@@ -84,6 +84,12 @@ Linux 侧两个坑已在 `core/remote/BleServer.kt` 里处理：写响应必须�
 | `countdown.add` | `title` + `target_at` 必填；`id?` `color_index?` | `id` `created` |
 | `countdown.update` | `id` 必填；`title?` `target_at?` `color_index?` | `id` `created` |
 | `countdown.delete` | `id` | `id` `deleted` |
+| `today.summary` | — | `today` `todos{undone,done_today,total}` `habits{total,done}` `water{ml,goal_ml}` `sleep{today_minutes,streak,last}` `focus{sessions,minutes}` `next_countdown` |
+| `water.log` | `ml?`；`id?` | `id` `ml` `today_ml` `goal_ml` |
+| `water.today` | — | `date` `ml` `goal_ml` `cups[]` `logs[]` |
+| `sleep.list` | `days?`（默认 14，上限 370） | `from` `today_minutes` `items[]` |
+| `sleep.log` | `sleep_at` + `wake_at` + `id?` | `id` `minutes` `day` |
+| `focus.today` | — | `date` `sessions` `minutes` `by_todo[]` |
 
 ### 校验规则
 
@@ -97,7 +103,7 @@ Linux 侧两个坑已在 `core/remote/BleServer.kt` 里处理：写响应必须�
 
 ### 幂等
 
-同一个 `id` 重复 `*.add` 会**更新**而不是插入第二条，返回 `created:false`。所以 PC 丢响应直接重试是安全的。不带 `id` 时手机生成 UUID；想拿回 id 就从响应里读。
+同一个 `id` 重复 `*.add` 会**更新**而不是插入第二条，返回 `created:false`。所以 PC 丢响应直接重试是安全的。不带 `id` 时手机生成 UUID；想拿回 id 就从响应里读。`water.log` / `sleep.log` 带 id 时同样是 upsert。
 
 `gwb` / `gwb-mcp` 的 `*.add` 一律**自己生成 id 再发**，于是重放幂等；其余写操作（`habit.check`、`*.update`、`*.delete`、`todo.done`）在链路中断时**不自动重发**，报 `link_lost` 让调用方先 list 核对——丢响应与写已生效在 BLE 上无法区分。
 

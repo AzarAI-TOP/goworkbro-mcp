@@ -281,3 +281,25 @@ def test_mtu_exchange_is_asked_on_the_backend(monkeypatch):
         assert link.client._backend.asked == 1  # escape hatch: not asked again
 
     run(scenario())
+
+
+def test_v2_capability_gate_asks_once_and_refuses_an_old_phone(reconnect):
+    pings = []
+
+    def handler(request):
+        pings.append(request["op"])
+        return ok("ping", protocol=1, today="2026-11-03")  # a pre-3.8 phone
+
+    reconnect(handler)
+
+    async def scenario():
+        phone = core.Phone()
+        assert await phone.require(1) == 1
+        with pytest.raises(core.GwbError) as too_old:
+            await phone.require(2)
+        assert too_old.value.code == "too_old"
+        with pytest.raises(core.GwbError):  # still refused, no second ping
+            await phone.require(2)
+
+    run(scenario())
+    assert pings == ["ping"]  # the version is cached for the life of the link

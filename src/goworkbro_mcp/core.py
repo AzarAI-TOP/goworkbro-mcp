@@ -334,6 +334,7 @@ class Phone:
         self._lock = asyncio.Lock()
         self._link: Link | None = None
         self._last = 0.0
+        self._protocol: int | None = None
 
     async def link(self) -> Link:
         """The live link — for callers that issue several requests themselves."""
@@ -345,6 +346,25 @@ class Phone:
         async with self._lock:
             await self._ensure()
             return await self._request(op, data)
+
+    async def protocol(self) -> int:
+        """The phone's protocol version — asked once per link, then cached."""
+        async with self._lock:
+            await self._ensure()
+            if self._protocol is None:
+                self._protocol = int((await self._request("ping", None)).get("protocol", 0))
+            return self._protocol
+
+    async def require(self, minimum: int) -> int:
+        """Fail loudly and usefully before trying an op the phone cannot know."""
+        version = await self.protocol()
+        if version < minimum:
+            raise GwbError(
+                "too_old",
+                f"手机端 GoWorkBro 协议是 v{version}，这个操作需要 v{minimum}："
+                "先升级 app（设置页 → 检查更新）",
+            )
+        return version
 
     async def call_id(
         self, op: str, kind: str, prefix: str, data: dict | None = None,
@@ -402,3 +422,4 @@ class Phone:
         if self._link is not None:
             await self._link.close()
             self._link = None
+        self._protocol = None
