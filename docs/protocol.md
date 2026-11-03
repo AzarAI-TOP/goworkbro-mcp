@@ -35,7 +35,18 @@ GATT 一次属性写最多 `MTU - 3` 字节，所以必须分片重组 —— �
 
 手机**只广播不扫描**（无需定位权限）。Android 的 LE 地址会轮换，**不要缓存 MAC**，每次扫。
 
-手机侧分片 `min(mtu − 3, 512)`，MTU 未知按 23；PC 侧写请求同理。实测（2026-11-03，Redmi 2602BRT18C ↔ Ubuntu/BlueZ，13 条待办 / 3.2 KB）：单次 `ping` 约 0.35 s，`todos.list` 约 0.45 s —— 瓶颈是连接间隔，不是分片。
+手机侧分片 `min(mtu − 3, 512)`，MTU 未知按 23；PC 侧写请求同理。
+
+**MTU 必须由 PC 主动要**：BlueZ 不会自己协商，不请求就两边都停在 23（每次属性写只剩 20 字节）。客户端连上后调 bleak 的 `_acquire_mtu()`，手机在 `onMtuChanged` 里跟着改成 247，之后分片数降到原来的 1/12。实测（2026-11-03，Redmi 2602BRT18C ↔ Ubuntu/BlueZ，13 条待办 / 3.2 KB，MTU 23）单次 `ping` 约 0.34 s、`todos.list` 约 0.5 s；协商 MTU 后见 README 的实测对比。
+
+### 请求 / 响应的配对
+
+帧里**没有请求 id**：一条回复靠它回显的 `op` 与请求配对。所以客户端必须
+
+1. 同一时刻只允许一个请求在途（`core.Phone` 用一把锁串行全部调用，**包括 id 解析**）；
+2. 收到 `op` 对不上的回复就判定链路失步（`desync`），丢弃整条连接重连，绝不复用那条回复。
+
+失步后旧连接的迟到帧不会自愈，这是 2026-11-03 抓到的真实故障：两个 agent 工具调用并发 → 共用同一个 pending 槽位 → 回复互相串台 → 用串来的 id 标错了待办。
 
 Linux 侧两个坑已在 `core/remote/BleServer.kt` 里处理：写响应必须离开回调线程并重试（BlueZ 在我们 notify 在途时会拒收 response，然后等 30 s 断链）；notify 必须串行等 `onNotificationSent`。
 
@@ -88,6 +99,8 @@ Linux 侧两个坑已在 `core/remote/BleServer.kt` 里处理：写响应必须�
 
 同一个 `id` 重复 `*.add` 会**更新**而不是插入第二条，返回 `created:false`。所以 PC 丢响应直接重试是安全的。不带 `id` 时手机生成 UUID；想拿回 id 就从响应里读。
 
+`gwb` / `gwb-mcp` 的 `*.add` 一律**自己生成 id 再发**，于是重放幂等；其余写操作（`habit.check`、`*.update`、`*.delete`、`todo.done`）在链路中断时**不自动重发**，报 `link_lost` 让调用方先 list 核对——丢响应与写已生效在 BLE 上无法区分。
+
 ## 电脑端（本仓库）：CLI 与 MCP
 
 ```bash
@@ -110,9 +123,9 @@ MCP server（给 agent 用，13 个工具）：
 pi mcp add goworkbro -- ~/.local/bin/gwb-mcp
 ```
 
-`ping`、`list_todos|habits|countdowns`、`add_todo`、`set_todo_done`、`delete_todo`、`add_habit`、`check_habit`、`delete_habit`、`add_countdown`、`delete_countdown`、`disconnect`。删除类必须 `confirm=true`（未确认时以工具错误返回，不会静默删）。
+`ping`、`list_todos|habits|countdowns`、`add_todo`、`set_todo_done`、`delete_todo`、`add_habit`、`check_habit`、`delete_habit`、`add_countdown`、`delete_countdown`、`disconnect`。删除类必须 `confirm=true`（未确认时以工具错误返回，不会静默删，也不消耗一次蓝牙往返）。
 
-连接在工具调用之间**复用**（首次 ~3–6 s 含扫描，之后单次 ~0.36 s），空闲 5 分钟自动断开省手机电；链路掉了重连一次，不重发已发出的写入。
+连接在工具调用之间**复用**（首次 ~3–6 s 含扫描），空闲 5 分钟自动断开省手机电；并发调用由一把锁串行化（不会串台）；链路掉了只重放幂等请求。
 
 ## 安全
 

@@ -1,6 +1,6 @@
 [project]
 name = "goworkbro-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server + CLI for GoWorkBro 电脑协同 — read and write todos, habits and countdowns over Bluetooth LE"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,3 +29,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/goworkbro_mcp"]
+
+[dependency-groups]
+dev = ["pytest"]

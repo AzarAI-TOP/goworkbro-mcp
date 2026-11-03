@@ -82,7 +82,7 @@ async def run(args) -> None:
 
 async def todo(link: core.Link, args) -> None:
     if args.action == "add":
-        data = {"title": args.title}
+        data = {"id": core.new_id(), "title": args.title}
         for key, field in (("icon", "icon"), ("color", "color_index"),
                            ("timing", "timing_type"), ("minutes", "duration_minutes")):
             value = getattr(args, key)
@@ -97,16 +97,16 @@ async def todo(link: core.Link, args) -> None:
         )
         print(f"{short(data['id'])} → {('已完成 ' + data['done_date']) if data['is_done'] else '未完成'}")
     elif args.action == "rm":
-        todo_id = await core.resolve_id(link, "todos", args.id)
         if not args.yes:
-            sys.exit(f"删除待办会真的删掉 {short(todo_id)}，确认就加 --yes")
+            sys.exit(f"删除待办不可恢复：确认就加 --yes（id {args.id}）")
+        todo_id = await core.resolve_id(link, "todos", args.id)
         core.check(await link.request("todo.delete", {"id": todo_id}))
         print(f"已删除 {short(todo_id)}")
 
 
 async def habit(link: core.Link, args) -> None:
     if args.action == "add":
-        data = {"title": args.title}
+        data = {"id": core.new_id(), "title": args.title}
         for key, field in (("icon", "icon"), ("color", "color_index"),
                            ("target", "target_count"), ("unit", "unit")):
             value = getattr(args, key)
@@ -123,24 +123,24 @@ async def habit(link: core.Link, args) -> None:
         state = "已达标" if result["is_completed"] else "未达标"
         print(f"{short(result['id'])}  {result['current_count']}/{result['target_count']}  {state}")
     elif args.action == "rm":
-        habit_id = await core.resolve_id(link, "habits", args.id)
         if not args.yes:
-            sys.exit(f"删除习惯会真的删掉 {short(habit_id)}，确认就加 --yes")
+            sys.exit(f"删除习惯不可恢复：确认就加 --yes（id {args.id}）")
+        habit_id = await core.resolve_id(link, "habits", args.id)
         core.check(await link.request("habit.delete", {"id": habit_id}))
         print(f"已删除 {short(habit_id)}")
 
 
 async def countdown(link: core.Link, args) -> None:
     if args.action == "add":
-        data = {"title": args.title, "target_at": args.when}
+        data = {"id": core.new_id(), "title": args.title, "target_at": args.when}
         if args.color is not None:
             data["color_index"] = args.color
         created = core.check(await link.request("countdown.add", data))
         print(f"新建 {short(created['id'])}  {args.title} @ {args.when}")
     elif args.action == "rm":
-        countdown_id = await core.resolve_id(link, "countdowns", args.id)
         if not args.yes:
-            sys.exit(f"删除倒计时会真的删掉 {short(countdown_id)}，确认就加 --yes")
+            sys.exit(f"删除倒计时不可恢复：确认就加 --yes（id {args.id}）")
+        countdown_id = await core.resolve_id(link, "countdowns", args.id)
         core.check(await link.request("countdown.delete", {"id": countdown_id}))
         print(f"已删除 {short(countdown_id)}")
 
